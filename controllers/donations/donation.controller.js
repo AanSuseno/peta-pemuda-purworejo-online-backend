@@ -1,7 +1,5 @@
 import prisma from "../../lib/prisma.js";
-import fs from "fs";
-
-import path from "path";
+import { deleteCloudinaryFile } from "../../utils/cloudinaryHelper.js";
 
 export const createDonation = async (req, res) => {
   try {
@@ -817,7 +815,7 @@ export const createDistribution = async (req, res) => {
         prisma.distribution_evidences.create({
           data: {
             distribution_id: distribution.distribution_id,
-            evidence_url: `/uploads/distributions/${file.filename}`,
+            evidence_url: file.path, // Cloudinary secure_url
             caption: req.body[`caption_${index}`] || null,
             uploaded_at: new Date()
           }
@@ -882,7 +880,7 @@ export const addDistributionEvidence = async (req, res) => {
       prisma.distribution_evidences.create({
         data: {
           distribution_id: distribution.distribution_id,
-          evidence_url: `/uploads/distributions/${file.filename}`,
+          evidence_url: file.path, // Cloudinary secure_url
           caption: req.body[`caption_${index}`] || null,
           uploaded_at: new Date()
         }
@@ -1107,14 +1105,13 @@ export const deleteDistribution = async (req, res) => {
       });
     }
 
-    // Hapus file evidence dari disk
+    // Hapus file evidence dari Cloudinary
     if (distribution.distribution_evidences.length > 0) {
-      distribution.distribution_evidences.forEach((evidence) => {
-        const filePath = path.join(process.cwd(), evidence.evidence_url);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
-      });
+      await Promise.all(
+        distribution.distribution_evidences.map((evidence) =>
+          deleteCloudinaryFile(evidence.evidence_url, "image")
+        )
+      );
     }
 
     // Jika sudah distributed, kembalikan total_distributed di campaign

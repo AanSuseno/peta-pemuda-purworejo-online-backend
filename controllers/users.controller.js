@@ -1,8 +1,7 @@
 // controllers/users.controller.js
 import prisma from "../lib/prisma.js";
 import bcrypt from "bcrypt";
-import fs from "fs";
-import path from "path";
+import { deleteCloudinaryFile } from "../utils/cloudinaryHelper.js";
 
 // 📋 GET All Users (Admin Only)
 export const getAllUsers = async (req, res) => {
@@ -904,16 +903,13 @@ export const uploadMyProfilePicture = async (req, res) => {
             where: { user_id: userId }
         });
 
-        // Hapus foto lama jika ada
+        // Hapus foto lama jika ada (Cloudinary)
         if (user.profile_picture) {
-            const oldFilePath = path.join(process.cwd(), user.profile_picture);
-            if (fs.existsSync(oldFilePath)) {
-                fs.unlinkSync(oldFilePath);
-            }
+            await deleteCloudinaryFile(user.profile_picture);
         }
 
-        // URL file yang diupload (relative path)
-        const fileUrl = `/uploads/profiles/${req.file.filename}`;
+        // URL file yang diupload (Cloudinary secure_url)
+        const fileUrl = req.file.path;
 
         // Update database
         const updatedUser = await prisma.users.update({

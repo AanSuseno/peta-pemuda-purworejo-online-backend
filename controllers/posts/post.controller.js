@@ -1,6 +1,5 @@
 import prisma from "../../lib/prisma.js";
-import fs from "fs";
-import path from "path";
+import { deleteCloudinaryFile } from "../../utils/cloudinaryHelper.js";
 import { addCommunityScore } from "../score.controller.js";
 
 const getScoreByVisibility = (visibility, isCreation = true, postType = 'regular') => {
@@ -348,7 +347,7 @@ export const createPostWithMedia = async (req, res) => {
                     data: {
                         post_id: post.post_id,
                         media_type: mediaType,
-                        media_url: `/uploads/posts/${file.filename}`,
+                        media_url: file.path, // Cloudinary secure_url
                         caption: null,
                         is_cover: index === 0,
                         sort_order: index,
@@ -639,14 +638,13 @@ export const deletePost = async (req, res) => {
             });
         }
 
-        // Hapus media files
+        // Hapus media files dari Cloudinary
         if (post.post_media && post.post_media.length > 0) {
-            post.post_media.forEach(media => {
-                const filePath = path.join(process.cwd(), media.media_url);
-                if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath);
-                }
-            });
+            await Promise.all(
+                post.post_media.map(media =>
+                    deleteCloudinaryFile(media.media_url, media.media_type === 'video' ? 'video' : 'image')
+                )
+            );
         }
 
         // Soft delete - set status = 'hidden'

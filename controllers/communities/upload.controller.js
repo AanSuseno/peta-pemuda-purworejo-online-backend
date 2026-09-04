@@ -1,6 +1,5 @@
 import prisma from "../../lib/prisma.js";
-import path from "path";
-import fs from 'fs';
+import { deleteCloudinaryFile } from "../../utils/cloudinaryHelper.js";
 
 export const uploadCommunityLogo = async (req, res) => {
     try {
@@ -43,16 +42,13 @@ export const uploadCommunityLogo = async (req, res) => {
             });
         }
 
-        // Hapus logo lama jika ada
+        // Hapus logo lama jika ada (Cloudinary)
         if (community.logo) {
-            const oldFilePath = path.join(process.cwd(), community.logo);
-            if (fs.existsSync(oldFilePath)) {
-                fs.unlinkSync(oldFilePath);
-            }
+            await deleteCloudinaryFile(community.logo);
         }
 
-        // URL file
-        const fileUrl = `/uploads/communities/${req.file.filename}`;
+        // URL file (Cloudinary secure_url)
+        const fileUrl = req.file.path;
 
         // Update database
         const updatedCommunity = await prisma.communities.update({
@@ -144,16 +140,13 @@ export const uploadCommunityBanner = async (req, res) => {
             });
         }
 
-        // Hapus banner lama jika ada
+        // Hapus banner lama jika ada (Cloudinary)
         if (community.banner) {
-            const oldFilePath = path.join(process.cwd(), community.banner);
-            if (fs.existsSync(oldFilePath)) {
-                fs.unlinkSync(oldFilePath);
-            }
+            await deleteCloudinaryFile(community.banner);
         }
 
-        // URL file
-        const fileUrl = `/uploads/communities/${req.file.filename}`;
+        // URL file (Cloudinary secure_url)
+        const fileUrl = req.file.path;
 
         // Update database
         const updatedCommunity = await prisma.communities.update({
@@ -244,15 +237,12 @@ export const uploadCommunityMedia = async (req, res) => {
         if (req.files && req.files.logo && req.files.logo.length > 0) {
             const logoFile = req.files.logo[0];
             
-            // Hapus logo lama
+            // Hapus logo lama (Cloudinary)
             if (community.logo) {
-                const oldFilePath = path.join(process.cwd(), community.logo);
-                if (fs.existsSync(oldFilePath)) {
-                    fs.unlinkSync(oldFilePath);
-                }
+                await deleteCloudinaryFile(community.logo);
             }
-            
-            const logoUrl = `/uploads/communities/${logoFile.filename}`;
+
+            const logoUrl = logoFile.path;
             updateData.logo = logoUrl;
             uploadedFiles.push({
                 type: 'logo',
@@ -266,15 +256,12 @@ export const uploadCommunityMedia = async (req, res) => {
         if (req.files && req.files.banner && req.files.banner.length > 0) {
             const bannerFile = req.files.banner[0];
             
-            // Hapus banner lama
+            // Hapus banner lama (Cloudinary)
             if (community.banner) {
-                const oldFilePath = path.join(process.cwd(), community.banner);
-                if (fs.existsSync(oldFilePath)) {
-                    fs.unlinkSync(oldFilePath);
-                }
+                await deleteCloudinaryFile(community.banner);
             }
-            
-            const bannerUrl = `/uploads/communities/${bannerFile.filename}`;
+
+            const bannerUrl = bannerFile.path;
             updateData.banner = bannerUrl;
             uploadedFiles.push({
                 type: 'banner',
@@ -373,11 +360,8 @@ export const deleteCommunityLogo = async (req, res) => {
             });
         }
 
-        // Hapus file
-        const filePath = path.join(process.cwd(), community.logo);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-        }
+        // Hapus file di Cloudinary
+        await deleteCloudinaryFile(community.logo);
 
         // Update database
         await prisma.communities.update({
@@ -443,11 +427,8 @@ export const deleteCommunityBanner = async (req, res) => {
             });
         }
 
-        // Hapus file
-        const filePath = path.join(process.cwd(), community.banner);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-        }
+        // Hapus file di Cloudinary
+        await deleteCloudinaryFile(community.banner);
 
         // Update database
         await prisma.communities.update({

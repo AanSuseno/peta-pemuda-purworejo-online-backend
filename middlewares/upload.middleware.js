@@ -1,78 +1,81 @@
 // middlewares/upload.middleware.js
 import multer from "multer";
-import path from "path";
-import fs from "fs";
+import cloudinaryStorage from "../utils/cloudinaryStorage.js";
 
-// Pastikan folder uploads ada
-const uploadDir = "uploads";
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
+// Helper untuk generate public_id yang mirip dengan skema filename lama
+const makePublicId = (prefix) =>
+    `${prefix}-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 
-// Konfigurasi storage
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        // Tentukan folder berdasarkan tipe file
-        let folder = uploadDir;
-        if (file.fieldname === 'logo' || file.fieldname === 'banner') {
-            folder = path.join(uploadDir, 'communities');
-        } else if (file.fieldname === 'profile_picture') {
-            folder = path.join(uploadDir, 'profiles');
+// ============================================================
+// STORAGE: Community logo / banner / profile picture (images)
+// ============================================================
+const imageStorage = cloudinaryStorage({
+    params: async (req, file) => {
+        let folder = "komunitas/misc";
+        let prefix = "file";
+
+        if (file.fieldname === "logo") {
+            folder = "komunitas/communities";
+            prefix = "logo";
+        } else if (file.fieldname === "banner") {
+            folder = "komunitas/communities";
+            prefix = "banner";
+        } else if (file.fieldname === "profile_picture") {
+            folder = "komunitas/profiles";
+            prefix = "profile";
         }
-        
-        // Buat folder jika belum ada
-        if (!fs.existsSync(folder)) {
-            fs.mkdirSync(folder, { recursive: true });
-        }
-        
-        cb(null, folder);
+
+        return {
+            folder,
+            public_id: makePublicId(prefix),
+            allowed_formats: ["jpg", "jpeg", "png", "gif", "webp"],
+            resource_type: "image",
+        };
     },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
-        const ext = path.extname(file.originalname);
-        const prefix = file.fieldname === 'logo' ? 'logo' : 
-                       file.fieldname === 'banner' ? 'banner' : 'profile';
-        cb(null, `${prefix}-${uniqueSuffix}${ext}`);
-    }
 });
 
 // Filter file - hanya gambar
 const fileFilter = (req, file, cb) => {
+    console.log("🧪 [fileFilter/image] field:", file.fieldname, "| originalname:", file.originalname, "| mimetype:", file.mimetype);
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const extname = allowedTypes.test(file.originalname.toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
 
     if (mimetype && extname) {
+        console.log("✅ [fileFilter/image] lolos");
         return cb(null, true);
     } else {
+        console.log("❌ [fileFilter/image] ditolak. extname ok?", extname, "| mimetype ok?", mimetype);
         cb(new Error("Hanya file gambar yang diizinkan (jpeg, jpg, png, gif, webp)"));
     }
 };
 
-const postStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const folder = path.join(uploadDir, 'posts');
-        if (!fs.existsSync(folder)) {
-            fs.mkdirSync(folder, { recursive: true });
-        }
-        cb(null, folder);
+// ============================================================
+// STORAGE: Post media (images & videos)
+// ============================================================
+const postStorage = cloudinaryStorage({
+    params: async (req, file) => {
+        const isVideo = file.mimetype.startsWith("video");
+        return {
+            folder: "komunitas/posts",
+            public_id: makePublicId("post"),
+            resource_type: isVideo ? "video" : "image",
+        };
     },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
-        const ext = path.extname(file.originalname);
-        cb(null, `post-${uniqueSuffix}${ext}`);
-    }
 });
 
 // Filter untuk post media (gambar & video)
 const postFileFilter = (req, file, cb) => {
+    console.log("🧪 [fileFilter/post] field:", file.fieldname, "| originalname:", file.originalname, "| mimetype:", file.mimetype);
     const allowedTypes = /jpeg|jpg|png|gif|webp|mp4|mov|avi/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const extname = allowedTypes.test(file.originalname.toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
 
     if (mimetype && extname) {
+        console.log("✅ [fileFilter/post] lolos");
         return cb(null, true);
     } else {
+        console.log("❌ [fileFilter/post] ditolak. extname ok?", extname, "| mimetype ok?", mimetype);
         cb(new Error("Hanya file gambar (jpeg, jpg, png, gif, webp) dan video (mp4, mov, avi) yang diizinkan"));
     }
 };
@@ -87,6 +90,10 @@ const uploadPostMedia = multer({
 });
 
 export const handleUploadError = (err, req, res, next) => {
+    if (err) {
+        console.log("🧪 [handleUploadError] ada error masuk. name:", err.name, "| message:", err.message, "| code:", err.code);
+    }
+
     if (err instanceof multer.MulterError) {
         let message = "Upload gagal";
         if (err.code === 'LIMIT_FILE_SIZE') {
@@ -94,20 +101,23 @@ export const handleUploadError = (err, req, res, next) => {
         } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
             message = "Field file tidak sesuai dengan yang diharapkan";
         }
+        console.log("❌ [handleUploadError] MulterError:", message);
         return res.status(400).json({ success: false, message });
     }
 
     if (err) {
-        // Error dari fileFilter, mis. "Hanya file gambar yang diizinkan..."
+        // Error dari fileFilter atau dari cloudinaryStorage._handleFile
+        console.log("❌ [handleUploadError] Error lain (fileFilter/Cloudinary):", err.message);
         return res.status(400).json({ success: false, message: err.message });
     }
 
+    console.log("✅ [handleUploadError] tidak ada error, lanjut ke controller. req.file:", req.file ? req.file.filename : null, "| req.files:", req.files ? Object.keys(req.files).length || req.files.length : null);
     next();
 };
 
-// Upload middleware
+// Upload middleware (images: logo, banner, profile_picture)
 const upload = multer({
-    storage: storage,
+    storage: imageStorage,
     limits: {
         fileSize: 5 * 1024 * 1024 // 5MB
     },
@@ -132,30 +142,32 @@ export const uploadCommunityMedia = upload.fields([
 export const uploadPostImages = uploadPostMedia.array("media", 10); // Max 10 files
 export const uploadSinglePostImage = uploadPostMedia.single("media");
 
-const donationStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const folder = path.join(uploadDir, 'donations');
-        if (!fs.existsSync(folder)) {
-            fs.mkdirSync(folder, { recursive: true });
-        }
-        cb(null, folder);
+// ============================================================
+// STORAGE: Donation proof / goods photo (images & PDF)
+// ============================================================
+const donationStorage = cloudinaryStorage({
+    params: async (req, file) => {
+        const isPdf = file.mimetype === "application/pdf";
+        return {
+            folder: "komunitas/donations",
+            public_id: makePublicId("donation"),
+            resource_type: isPdf ? "raw" : "image",
+        };
     },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
-        const ext = path.extname(file.originalname);
-        cb(null, `donation-${uniqueSuffix}${ext}`);
-    }
 });
 
 // Donation file filter
 const donationFileFilter = (req, file, cb) => {
+    console.log("🧪 [fileFilter/donation] field:", file.fieldname, "| originalname:", file.originalname, "| mimetype:", file.mimetype);
     const allowedTypes = /jpeg|jpg|png|gif|webp|pdf/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const extname = allowedTypes.test(file.originalname.toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
 
     if (mimetype && extname) {
+        console.log("✅ [fileFilter/donation] lolos");
         return cb(null, true);
     } else {
+        console.log("❌ [fileFilter/donation] ditolak. extname ok?", extname, "| mimetype ok?", mimetype);
         cb(new Error("Hanya file gambar (jpeg, jpg, png, gif, webp) dan PDF yang diizinkan"));
     }
 };
@@ -172,11 +184,20 @@ const uploadDonation = multer({
 export const uploadDonationProof = uploadDonation.single("proof_image");
 export const uploadDonationGoodsPhoto = uploadDonation.single("goods_photo");
 
+// ============================================================
+// STORAGE: Distribution evidence (images, multiple)
+// ============================================================
+const distributionStorage = cloudinaryStorage({
+    params: async (req, file) => ({
+        folder: "komunitas/distributions",
+        public_id: makePublicId("evidence"),
+        resource_type: "image",
+    }),
+});
+
 export const uploadDistributionEvidence = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, "uploads/distributions/"),
-    filename: (req, file, cb) => {
-      cb(null, `${Date.now()}-${file.originalname}`);
+    storage: distributionStorage,
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10MB
     }
-  })
 }).array("evidence_images", 10);
